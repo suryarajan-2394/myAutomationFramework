@@ -1,6 +1,10 @@
 pipeline {
     agent any
 
+    tools {
+        maven 'MavenLocal'     // Must match Jenkins Maven name
+    }
+
     options {
         timestamps()
     }
@@ -27,11 +31,14 @@ pipeline {
 
         stage('Publish Reports') {
             steps {
+                // Publish TestNG report
                 testNG reportFilenamePattern: '**/test-output/testng-results.xml',
                       escapeTestDescp: true, escapeExceptionMsg: true
 
+                // Publish JUnit results if available
                 junit allowEmptyResults: true, testResults: '**/surefire-reports/*.xml'
 
+                // Save reports & logs
                 archiveArtifacts artifacts: 'test-output/**, target/**', fingerprint: true
             }
         }
