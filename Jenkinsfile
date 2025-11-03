@@ -2,7 +2,7 @@ pipeline {
     agent any
 
     tools {
-        maven 'MavenLocal'     // Must match Jenkins Maven name
+        maven 'MavenLocal'   // Jenkins -> Global Tool Config -> Maven name
     }
 
     options {
@@ -29,16 +29,29 @@ pipeline {
             }
         }
 
+        stage('Publish Extent Report') {
+            steps {
+                publishHTML([
+                    reportDir: 'test-output',              // folder where Extent report exists
+                    reportFiles: 'ExtentReport.html',      // exact report file name
+                    reportName: 'Extent Report',
+                    keepAll: true,
+                    alwaysLinkToLastBuild: true,
+                    allowMissing: true
+                ])
+            }
+        }
+
         stage('Publish Reports') {
             steps {
-                // Publish TestNG report
+                // TestNG results
                 testNG reportFilenamePattern: '**/test-output/testng-results.xml',
                       escapeTestDescp: true, escapeExceptionMsg: true
 
-                // Publish JUnit results if available
+                // JUnit XML
                 junit allowEmptyResults: true, testResults: '**/surefire-reports/*.xml'
 
-                // Save reports & logs
+                // Archive results for download
                 archiveArtifacts artifacts: 'test-output/**, target/**', fingerprint: true
             }
         }
