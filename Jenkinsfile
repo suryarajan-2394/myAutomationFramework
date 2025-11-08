@@ -29,18 +29,18 @@ pipeline {
             }
         }
 
-        stage('Publish Extent Report') {
-            steps {
-                publishHTML([
-                    reportDir: 'test-output',              // folder where Extent report exists
-                    reportFiles: 'ExtentReport.html',      // exact report file name
-                    reportName: 'Extent Report',
-                    keepAll: true,
-                    alwaysLinkToLastBuild: true,
-                    allowMissing: true
-                ])
-            }
-        }
+       stage('Publish Extent Report') {
+    steps {
+        publishHTML([
+            reportDir: 'AutomationReports',         // ✅ your folder
+            reportFiles: 'TestAutomationReport.html',       // ✅ your main report file
+            reportName: 'Extent Report',
+            keepAll: true,
+            alwaysLinkToLastBuild: true,
+            allowMissing: true
+        ])
+    }
+}
 
         stage('Publish Reports') {
             steps {
@@ -52,7 +52,7 @@ pipeline {
                 junit allowEmptyResults: true, testResults: '**/surefire-reports/*.xml'
 
                 // Archive results for download
-                archiveArtifacts artifacts: 'test-output/**, target/**', fingerprint: true
+               archiveArtifacts artifacts: 'AutomationReports/**, test-output/**, target/**', fingerprint: true
             }
         }
     }
