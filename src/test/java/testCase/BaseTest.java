@@ -107,13 +107,13 @@ public class BaseTest {
 		if (result.getStatus() == ITestResult.FAILURE) {
 			test.log(Status.FAIL, "Overall Test Status: FAILED");
 			test.log(Status.FAIL, result.getThrowable());
-			test.addScreenCaptureFromPath(utils.getScreenshot(driver));
+			test.addScreenCaptureFromPath(utils.getScreenshotNew(driver));
 		} else if (result.getStatus() == ITestResult.SUCCESS) {
 			test.log(Status.PASS, "Overall Test Status: PASSED");
-			test.addScreenCaptureFromPath(utils.getScreenshot(driver));
+			test.addScreenCaptureFromPath(utils.getScreenshotNew(driver));
 		} else {
 			test.log(Status.SKIP, "Overall Test Status: SKIPPED");
-			test.addScreenCaptureFromPath(utils.getScreenshot(driver));
+			test.addScreenCaptureFromPath(utils.getScreenshotNew(driver));
 		}
 		driver.quit();
 	}
