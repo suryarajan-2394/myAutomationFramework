@@ -4,6 +4,7 @@ pipeline {
   tools {
     // optional if you configured Maven in Jenkins Tool config
     // maven 'MavenLocal'
+    maven 'MavenLocal'
   }
 
   options { timestamps() }
