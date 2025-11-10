@@ -2,7 +2,7 @@ pipeline {
     agent any
 
     tools {
-        maven 'Mavenlocal'
+       maven 'MavenLocal'
     }
 
     options {
