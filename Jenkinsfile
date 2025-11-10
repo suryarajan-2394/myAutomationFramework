@@ -2,17 +2,20 @@ pipeline {
     agent any
 
     tools {
-        maven 'MavenLocal'    // make sure this exact name exists in Manage Jenkins -> Global Tool Configuration
+        // Make sure 'MavenLocal' exists in Jenkins -> Global Tool Configuration
+        maven 'MavenLocal'
     }
 
     options {
         timestamps()
-        ansiColor('xterm')   // optional, helps readability
+        // ansiColor removed because it caused the "Invalid option type" error
     }
 
     environment {
-        REPORT_DIR = "AutomationReports"
-        ZIP_NAME = "AutomationReports.zip"
+        // recipients - change if needed
+        EMAIL_RECIPIENTS = 'suryarajan.selvarajan@gmail.com'
+        REPORT_DIR = 'AutomationReports'
+        REPORT_ZIP = 'AutomationReports.zip'
     }
 
     stages {
@@ -24,9 +27,10 @@ pipeline {
 
         stage('Build & Run Tests') {
             steps {
-                // do not fail the whole pipeline on test failures — mark UNSTABLE instead
-                catchError(buildResult: 'UNSTABLE', stageResult: 'UNSTABLE') {
-                    script {
+                script {
+                    // keep pipeline from aborting at this stage so post always executes
+                    // (we mark unstable on failure below)
+                    catchError(buildResult: 'UNSTABLE', stageResult: 'UNSTABLE') {
                         if (isUnix()) {
                             sh 'mvn clean test -Dsurefire.suiteXmlFiles=testng.xml'
                         } else {
@@ -38,27 +42,26 @@ pipeline {
         }
 
         stage('Publish Extent Report (HTML)') {
-            when {
-                expression { fileExists("${env.REPORT_DIR}/TestAutomationReport.html") }
-            }
             steps {
-                publishHTML ([
+                publishHTML([
                     reportDir: "${env.REPORT_DIR}",
                     reportFiles: 'TestAutomationReport.html',
                     reportName: 'Extent Report',
                     keepAll: true,
                     alwaysLinkToLastBuild: true,
-                    allowMissing: false
+                    allowMissing: true
                 ])
             }
         }
 
         stage('Publish Test Results & Archive') {
             steps {
-                // publish test results (junit/testng)
-                junit allowEmptyResults: true, testResults: '**/surefire-reports/*.xml'
-                // also archive full report folder and test-output
-                archiveArtifacts artifacts: "${env.REPORT_DIR}/**, test-output/**, target/**", fingerprint: true
+                script {
+                    // TestNG / JUnit
+                    junit allowEmptyResults: true, testResults: '**/surefire-reports/*.xml'
+                    // archive full report folder & other useful outputs
+                    archiveArtifacts artifacts: "${env.REPORT_DIR}/**, test-output/**, target/**", fingerprint: true, allowEmptyArchive: true
+                }
             }
         }
 
@@ -66,64 +69,75 @@ pipeline {
             steps {
                 script {
                     if (isUnix()) {
+                        // linux / mac
                         sh """
-                        if [ -f ${ZIP_NAME} ]; then rm -f ${ZIP_NAME}; fi
-                        cd ${REPORT_DIR}
-                        zip -r ../${ZIP_NAME} . || true
+                            rm -f ${env.REPORT_ZIP} || true
+                            zip -r ${env.REPORT_ZIP} ${env.REPORT_DIR}
                         """
                     } else {
-                        // Windows PowerShell
+                        // windows: use PowerShell Compress-Archive
                         bat """
-                        if exist ${ZIP_NAME} (del /F /Q ${ZIP_NAME})
-                        powershell -NoProfile -NonInteractive -Command "Compress-Archive -Path '${REPORT_DIR}\\*' -DestinationPath '${ZIP_NAME}' -Force"
+                            if exist ${env.REPORT_ZIP} del /F /Q ${env.REPORT_ZIP}
+                            powershell -NoProfile -Command "Compress-Archive -Path '${env.REPORT_DIR}\\*' -DestinationPath '${env.REPORT_ZIP}' -Force"
                         """
                     }
                 }
             }
         }
 
-        stage('Optional: Publish ZIP as Artifact') {
+        stage('Publish ZIP as Artifact (optional)') {
             steps {
-                archiveArtifacts artifacts: "${ZIP_NAME}", fingerprint: true
-            }
-        }
-
-        stage('Email Report (with ZIP)') {
-            steps {
-                script {
-                    // send email with credentials stored in Jenkins (username/password)
-                    // Ensure you have created a credential of type "Username with password" with ID = gmail-creds
-                    withCredentials([usernamePassword(credentialsId: 'gmail-creds', usernameVariable: 'GMAIL_USER', passwordVariable: 'GMAIL_PASS')]) {
-                        // emailext plugin usage
-                        emailext (
-                            to: 'suryarajan.selvarajan@gmail.com',
-                            subject: "[$env.JOB_NAME #${env.BUILD_NUMBER}] ${currentBuild.currentResult} - Extent Report",
-                            body: """<p>Build: <a href="${env.BUILD_URL}">${env.JOB_NAME} #${env.BUILD_NUMBER}</a></p>
-                                     <p>Result: ${currentBuild.currentResult}</p>
-                                     <p>Attached: ${ZIP_NAME}</p>""",
-                            mimeType: 'text/html',
-                            from: "${GMAIL_USER}",
-                            replyTo: "${GMAIL_USER}",
-                            attachmentsPattern: "${ZIP_NAME}"
-                        )
-                    }
-                }
+                archiveArtifacts artifacts: "${env.REPORT_ZIP}", fingerprint: true, allowEmptyArchive: true
             }
         }
     }
 
     post {
-        success {
-            echo "✅ Build Succeeded: ${env.BUILD_URL}"
-        }
-        unstable {
-            echo "⚠️ Build Unstable (some tests failed). Email still sent with report."
-        }
-        failure {
-            echo "❌ Build Failed (error). If email didn't send, check credential / SMTP settings."
-        }
         always {
-            echo "Pipeline finished. Artifacts: ${env.BUILD_URL}artifact/"
+            script {
+                // Display helpful info in console
+                echo "Build result: ${currentBuild.currentResult}"
+                echo "Sending email (if email-ext configured)..."
+
+                // --- EMAIL: using email-ext plugin ---
+                // Note: email-ext uses SMTP settings configured in Jenkins -> Manage Jenkins -> Configure System
+                // Make sure your SMTP server, port, TLS, and credentials (gmail-creds) are configured there.
+                //
+                // This will attach the AutomationReports.zip (if present).
+                //
+                // If you want to use credentials inside pipeline to call a custom mailer, do that separately.
+                //
+                // The email-ext call below is the simplest: subject, body, recipients, and attachment pattern.
+
+                // Wait a little to ensure zip was written on remote agent (avoid race)
+                sleep(time: 2, unit: "SECONDS")
+
+                // Send email with attachment (email-ext must be installed & SMTP configured)
+                emailext (
+                    to: "${env.EMAIL_RECIPIENTS}",
+                    subject: "[${currentBuild.currentResult}] ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                    body: """Build: ${env.BUILD_URL}
+Status: ${currentBuild.currentResult}
+Job: ${env.JOB_NAME} #${env.BUILD_NUMBER}
+
+See attached AutomationReports.zip (if generated).
+""",
+                    attachmentsPattern: "${env.REPORT_ZIP}",
+                    mimeType: 'text/plain'
+                )
+            }
+        }
+
+        success {
+            echo "✅ Build SUCCESS"
+        }
+
+        unstable {
+            echo "⚠️ Build UNSTABLE (some tests failed)"
+        }
+
+        failure {
+            echo "❌ Build FAILED"
         }
     }
 }
